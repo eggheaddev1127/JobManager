@@ -36,23 +36,18 @@ Open http://localhost:5173 in your browser. The app boots into the Running Jobs 
 
 ## Run (Docker)
 
-Requires Docker (Docker Desktop on macOS/Windows). From the repo root:
+The Docker setup targets a VPS with a real domain: nginx serves the built React
+app from a Docker volume, proxies `/api/*` to the API container, and terminates
+TLS with Let's Encrypt. See **[DEPLOY.md](DEPLOY.md)** for the full guide.
 
 ```bash
-docker compose up --build        # build images and run in the foreground
-docker compose up -d --build     # ... or detached (background)
-docker compose down              # stop and remove the containers
-docker compose logs -f           # follow logs
+cp .env.example .env               # set DOMAIN, LETSENCRYPT_EMAIL, SESSION_SECRET
+./deploy/init-letsencrypt.sh       # first deploy (build + TLS certificate)
+docker compose up -d --build       # later deploys
 ```
 
-This starts two containers:
-- `jobmanager-server` — the Express API (run via `tsx`), internal port 4000
-- `jobmanager-web` — the built React app served by nginx, published on
-  `http://localhost:5173`, reverse-proxying `/api/*` to the server
-
 The SQLite database is persisted to `server/data/` on the host (a bind mount),
-so data survives `docker compose down`. Set a real `SESSION_SECRET` in a `.env`
-file (see `.env.example`) before exposing this publicly.
+so data survives `docker compose down`.
 
 ## Features
 

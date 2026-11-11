@@ -21,6 +21,9 @@ initSchema();
 seedIfEmpty();
 
 const app = express();
+// Behind nginx: trust the first proxy hop so req.secure / req.ip reflect the
+// client's X-Forwarded-Proto / X-Forwarded-For (needed for secure cookies).
+app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 // Limit is generous enough to carry a base64-encoded resume (~8MB raw → ~11MB).
 app.use(express.json({ limit: '15mb' }));
@@ -30,7 +33,8 @@ app.use(cookieSession({
   maxAge: 7 * 24 * 60 * 60 * 1000,
   httpOnly: true,
   sameSite: 'lax',
-  secure: false,
+  // COOKIE_SECURE=true in production (HTTPS via nginx); off for local http dev.
+  secure: process.env.COOKIE_SECURE === 'true',
 }));
 
 app.get('/api/health', (_req, res) => {

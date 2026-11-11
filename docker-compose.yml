@@ -1,32 +1,83 @@
-# Job Manager — full stack in two containers.
+# Job Manager — production stack for an Ubuntu VPS.
 #
-#   docker compose up --build      # build images and start
-#   docker compose up -d --build   # ... in the background
-#   docker compose down            # stop and remove containers
+#   cp .env.example .env               # then edit DOMAIN, SESSION_SECRET, ...
+#   ./deploy/init-letsencrypt.sh       # first time only: build, start, get TLS cert
+#   docker compose up -d --build       # every later deploy
 #
-# The web container is published on host port 5173 so an existing Cloudflare
-# tunnel pointing at :5173 keeps working unchanged. It serves the built React
-# app and reverse-proxies /api to the server container.
+# Services:
+#   server   Express API (internal only, port 4000 on the compose network)
+#   client   one-shot: builds the React app and copies dist/ into the
+#            `client_dist` volume, then exits
+#   nginx    serves `client_dist` as static files, proxies /api/ to `server`,
+#            terminates TLS for ${DOMAIN}
+#   certbot  renews the Let's Encrypt certificate every 12h
 services:
   server:
     build: ./server
     container_name: jobmanager-server
     environment:
-      # Set a real secret in a .env file (SESSION_SECRET=...) or your shell.
-      - SESSION_SECRET=${SESSION_SECRET:-change-me-set-a-real-secret-in-prod}
-      - PORT=4000
+      # Must listen on all interfaces so nginx (another container) can reach it.
+      HOST: 0.0.0.0
+      PORT: 4000
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      # Session cookie is HTTPS-only; nginx always redirects HTTP -> HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
     volumes:
-      # Persist the SQLite database on the host (reuses existing data).
+      # SQLite database persisted on the host.
       - ./server/data:/app/data
+      # Tectonic's TeX bundle cache (resume PDFs) — avoids re-downloading.
+      - tectonic_cache:/root/.cache
     expose:
       - "4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
-  web:
+  client:
     build: ./client
-    container_name: jobmanager-web
+    container_name: jobmanager-client
+    volumes:
+      - client_dist:/srv/www
+    restart: "no"
+
+  nginx:
+    build: ./nginx
+    container_name: jobmanager-nginx
     depends_on:
-      - server
+      client:
+        condition: service_completed_successfully
+      server:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      EXTRA_DOMAINS: ${EXTRA_DOMAINS:-}
+      # Only substitute these in the templates; leave nginx's own $vars alone.
+      NGINX_ENVSUBST_FILTER: ^(DOMAIN|EXTRA_DOMAINS)$
     ports:
-      - "5173:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - client_dist:/usr/share/nginx/html:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
     restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:v2.11.0
+    container_name: jobmanager-certbot
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    restart: unless-stopped
+
+volumes:
+  client_dist:
+  certbot_conf:
+  certbot_www:
+  tectonic_cache:
