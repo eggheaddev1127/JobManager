@@ -1,0 +1,32 @@
+# Job Manager — full stack in two containers.
+#
+#   docker compose up --build      # build images and start
+#   docker compose up -d --build   # ... in the background
+#   docker compose down            # stop and remove containers
+#
+# The web container is published on host port 5173 so an existing Cloudflare
+# tunnel pointing at :5173 keeps working unchanged. It serves the built React
+# app and reverse-proxies /api to the server container.
+services:
+  server:
+    build: ./server
+    container_name: jobmanager-server
+    environment:
+      # Set a real secret in a .env file (SESSION_SECRET=...) or your shell.
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-set-a-real-secret-in-prod}
+      - PORT=4000
+    volumes:
+      # Persist the SQLite database on the host (reuses existing data).
+      - ./server/data:/app/data
+    expose:
+      - "4000"
+    restart: unless-stopped
+
+  web:
+    build: ./client
+    container_name: jobmanager-web
+    depends_on:
+      - server
+    ports:
+      - "5173:80"
+    restart: unless-stopped

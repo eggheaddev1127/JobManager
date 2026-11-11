@@ -1,0 +1,22 @@
+{
+  "name": "job-manager",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Job manager MVP — profiles, running jobs, interviews",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -k -n server,client -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:client": "npm --prefix client run build",
+    "preview:client": "npm --prefix client run preview",
+    "serve": "npm run build:client && concurrently -k -n server,web -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run preview\"",
+    "serve:web": "npm --prefix client run preview"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  },
+  "dependencies": {
+    "package.json": "^2.0.1"
+  }
+}
