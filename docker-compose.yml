@@ -1,16 +1,15 @@
-# Job Manager — production stack for an Ubuntu VPS.
+# Job Manager — production stack for an Ubuntu VPS, served over plain HTTP on
+# the server's public IP (no domain / TLS).
 #
-#   cp .env.example .env               # then edit DOMAIN, SESSION_SECRET, ...
-#   ./deploy/init-letsencrypt.sh       # first time only: build, start, get TLS cert
-#   docker compose up -d --build       # every later deploy
+#   cp .env.example .env               # then set SESSION_SECRET
+#   docker compose up -d --build       # first deploy and every later deploy
 #
 # Services:
 #   server   Express API (internal only, port 4000 on the compose network)
 #   client   one-shot: builds the React app and copies dist/ into the
 #            `client_dist` volume, then exits
-#   nginx    serves `client_dist` as static files, proxies /api/ to `server`,
-#            terminates TLS for ${DOMAIN}
-#   certbot  renews the Let's Encrypt certificate every 12h
+#   nginx    serves `client_dist` as static files and proxies /api/ to
+#            `server`; published on host port ${HTTP_PORT:-80}
 services:
   server:
     build: ./server
@@ -20,8 +19,8 @@ services:
       HOST: 0.0.0.0
       PORT: 4000
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
-      # Session cookie is HTTPS-only; nginx always redirects HTTP -> HTTPS.
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Plain HTTP: the session cookie must NOT be HTTPS-only, or login fails.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SUPERADMIN_EMAILS: ${SUPERADMIN_EMAILS:-}
     volumes:
       # SQLite database persisted on the host.
@@ -53,31 +52,12 @@ services:
         condition: service_completed_successfully
       server:
         condition: service_healthy
-    environment:
-      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
-      EXTRA_DOMAINS: ${EXTRA_DOMAINS:-}
-      # Only substitute these in the templates; leave nginx's own $vars alone.
-      NGINX_ENVSUBST_FILTER: ^(DOMAIN|EXTRA_DOMAINS)$
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
     volumes:
       - client_dist:/usr/share/nginx/html:ro
-      - certbot_conf:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    restart: unless-stopped
-
-  certbot:
-    image: certbot/certbot:v2.11.0
-    container_name: jobmanager-certbot
-    volumes:
-      - certbot_conf:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
     restart: unless-stopped
 
 volumes:
   client_dist:
-  certbot_conf:
-  certbot_www:
   tectonic_cache:

@@ -36,14 +36,13 @@ Open http://localhost:5173 in your browser. The app boots into the Running Jobs 
 
 ## Run (Docker)
 
-The Docker setup targets a VPS with a real domain: nginx serves the built React
-app from a Docker volume, proxies `/api/*` to the API container, and terminates
-TLS with Let's Encrypt. See **[DEPLOY.md](DEPLOY.md)** for the full guide.
+The Docker setup targets a VPS served over HTTP on its public IP: nginx serves
+the built React app from a Docker volume and proxies `/api/*` to the API
+container. See **[DEPLOY.md](DEPLOY.md)** for the full guide.
 
 ```bash
-cp .env.example .env               # set DOMAIN, LETSENCRYPT_EMAIL, SESSION_SECRET
-./deploy/init-letsencrypt.sh       # first deploy (build + TLS certificate)
-docker compose up -d --build       # later deploys
+cp .env.example .env               # set SESSION_SECRET
+docker compose up -d --build       # first deploy and every later deploy
 ```
 
 The SQLite database is persisted to `server/data/` on the host (a bind mount),
